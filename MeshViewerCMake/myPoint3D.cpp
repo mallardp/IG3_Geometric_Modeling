@@ -1,6 +1,7 @@
 #include "myPoint3D.h"
 #include "myVector3D.h"
 #include <iostream>
+#include <cmath>
 
 myPoint3D::myPoint3D()
 {
@@ -93,16 +94,22 @@ void myPoint3D::print(char *s)
 double myPoint3D::dist(myPoint3D *p1, myPoint3D *p2)
 {
 	//distance between current point, and the segment defined by p1,p2.
+	/**** TODO ****/
 
-	myVector3D v1 = *p2 - *p1;
-	myVector3D v2 = *this - *p1;
-	myVector3D v3 = *this - *p2;
-	
-	double dot = v1 * v2;
-	if (dot < 0.0) return v2.length();
-	dot = v1 * v1;
-	if (dot <= v2 * v2) return v2.length();
-	return v3.length();
+	myVector3D p1p2 = myVector3D(p2->X - p1->X, p2->Y - p1->Y, p2->Z - p1->Z);
+	myVector3D cp1 = myVector3D(p1->X - this->X, p1->Y - this->Y, p1->Z - this->Z);
+
+	double dot = abs(p1p2 * cp1); // produit scalaire
+	double t = dot / (p1p2.length() * p1p2.length()); // scalar projection
+	t = std::max(0.0, std::min(1.0, t));
+    // Calcul de la projection sur le segment
+    myPoint3D proj = myPoint3D(p1->X + t * p1p2.dX, p1->Y + t * p1p2.dY, p1->Z + t * p1p2.dZ);
+
+	double distP1 = this->dist(*p1); // la projection tombe avant P1
+	double distP2 = this->dist(*p2); // la projection tombe après P2
+	double distPROJ = this->dist(proj);
+
+	return std::min(std::min(distP1, distP2), distPROJ); // on prend la plus petite distance
 }
 
 double myPoint3D::dist(myPoint3D *p1, myPoint3D *p2, myPoint3D *p3)

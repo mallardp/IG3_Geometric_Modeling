@@ -374,7 +374,7 @@ void initMesh()
 	
 	cout << "Reading mesh from file...\n";
 	m = new myMesh();
-	if (m->readFile("../Models/dolphin.obj")) {
+	if (m->readFile("../Models/hand.obj")) {
 		m->computeNormals();
 		makeBuffers(m);
 	}
@@ -390,3 +390,26 @@ int main(int argc, char* argv[])
 	glutMainLoop();
 	return 0;
 }
+
+/*
+
+// Test code for myPoint3D class
+
+int main()
+{
+	myPoint3D p1(0, 0, 0), p2(3, 0, 0);
+	myPoint3D a(-2, 1, 0), b(1.5, 1, 0), c(5, 2, 0);
+	
+	printf("Distance from point to segment A-(P1P2): %f\n", a.dist(&p1,&p2));
+	printf("Distance from point to point (BP1): %f\n", a.dist(p1));
+
+	printf("Distance from point to segment B-(P1P2): %f\n", b.dist(&p1,&p2));
+	// MAUVAIS résultat
+
+	printf("Distance from point to segment C-(P1P2): %f\n", c.dist(&p1,&p2));
+	printf("Distance from point to point (CP2): %f\n", c.dist(p2));
+
+	return 0;
+}
+
+*/

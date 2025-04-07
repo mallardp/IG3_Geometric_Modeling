@@ -83,9 +83,52 @@ bool myMesh::readFile(std::string filename)
 		else if (t == "s") {}
 		else if (t == "f")
 		{
-			cout << "f"; 
-			while (myline >> u) cout << " " << atoi((u.substr(0, u.find("/"))).c_str());
-			cout << endl;
+			faceids.clear();
+			while (myline >> u) // Read indices of vertices from a face
+				faceids.push_back(atoi((u.substr(0, u.find("/"))).c_str()) - 1);
+			if (faceids.size() < 3) // Ignore degenerate faces
+				continue;
+
+			hedges = new myHalfedge *[faceids.size()]; // Allocation
+			for (unsigned int i = 0; i < faceids.size(); i++) 
+				hedges[i] = new myHalfedge(); // Allocation
+
+			myFace *f = new myFace(); // Allocation
+			f->adjacent_halfedge = hedges[0]; // Connect the face with its incident edge
+
+			for (unsigned int i = 0; i < faceids.size(); i++)
+			{
+				int iplusone = (i + 1) % faceids.size();
+				int iminusone = (i - 1 + faceids.size()) % faceids.size();
+
+				 // Connect prev and next half-edges
+				hedges[i]->prev = hedges[iminusone];
+				hedges[i]->next = hedges[iplusone];
+
+				hedges[i]->source = vertices[faceids[i]];
+
+				// Map the edge to create its twin
+				pair<int, int> edge_key(faceids[i], faceids[iplusone]);
+				pair<int, int> twin_key(faceids[iplusone], faceids[i]);
+
+				auto it = twin_map.find(twin_key);
+				if (it != twin_map.end()) {
+					// Twin exists, assign it to the current half-edge
+					hedges[i]->twin = it->second; //pair
+					it->second->twin = hedges[i]; //pair
+					twin_map.erase(it);
+				} else {
+					// Twin does not exist, add this edge to the map
+					twin_map[edge_key] = hedges[i];
+				}
+				hedges[i]->adjacent_face = f;
+
+				// Add the half-edge to the mesh
+				halfedges.push_back(hedges[i]);
+			}
+
+			// Add the face to the mesh
+			faces.push_back(f);
 		}
 	}
 
