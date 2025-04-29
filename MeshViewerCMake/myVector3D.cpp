@@ -50,6 +50,16 @@ myVector3D myVector3D::operator/(double s)
 	return myVector3D(dX/s, dY/s, dZ/s);
 }
 
+bool myVector3D::operator==(myVector3D v1)
+{
+	return (dX == v1.dX && dY == v1.dY && dZ == v1.dZ);
+}
+
+bool myVector3D::operator!=(myVector3D v1)
+{
+	return !(*this == v1);
+}
+
 void myVector3D::crossproduct(myVector3D v1, myVector3D v2)
 {
 	dX = v1.dY * v2.dZ - v1.dZ * v2.dY;
@@ -77,6 +87,8 @@ double myVector3D::length( )
 {
     return sqrt( dX*dX + dY*dY + dZ*dZ ); 
 }
+
+
 
 void myVector3D::normalize( )
 {

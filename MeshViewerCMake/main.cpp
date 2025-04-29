@@ -374,7 +374,7 @@ void initMesh()
 	
 	cout << "Reading mesh from file...\n";
 	m = new myMesh();
-	if (m->readFile("../Models/hand.obj")) {
+	if (m->readFile("../Models/dolphin.obj")) {
 		m->computeNormals();
 		makeBuffers(m);
 	}
