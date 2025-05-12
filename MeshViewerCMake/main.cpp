@@ -253,15 +253,12 @@ void display()
 			if ((*it)->twin == NULL) continue;
 			myVertex *v2 = (*it)->twin->source;
 
-			myVector3D direction = camera_eye - (*v1->point + *v2->point) * 0.5;
+			myVector3D direction_cam = camera_eye - *e->source->point;
 
-			if (e->adjacent_face->normal == NULL) e->adjacent_face->computeNormal();
+			double prodScal1 = direction_cam * *e->twin->adjacent_face->normal;
+			double prodScal2 = direction_cam * *e->adjacent_face->normal;
 
-			double res1 = direction * *e->adjacent_face->normal;
-			double res2 = direction * *e->twin->adjacent_face->normal;
-
-			//if the two normals are in opposite directions, then the edge is a silhouette edge.
-			if( res1 < 0 != res2 < 0 )
+			if( prodScal1 * prodScal2 < 0 )
 			{
 				silhouette_edges.push_back(v1->index);
 				silhouette_edges.push_back(v2->index);
@@ -374,7 +371,7 @@ void initMesh()
 	
 	cout << "Reading mesh from file...\n";
 	m = new myMesh();
-	if (m->readFile("../Models/dolphin.obj")) {
+	if (m->readFile("dolphin.obj")) {
 		m->computeNormals();
 		makeBuffers(m);
 	}

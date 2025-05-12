@@ -6,6 +6,7 @@
 #include <utility>
 #include <GL/glew.h>
 #include "myVector3D.h"
+#include <algorithm>
 
 using namespace std;
 
@@ -69,93 +70,7 @@ Face : Faire une boucle sur toutes les faces, et on fait la somme de tous les ve
 
 void myMesh::checkMesh()
 {
-    // Check for null pointers and closed circuits
-    for (myHalfedge* he : halfedges) {
-        if (!he || !he->next || !he->prev || !he->source || !he->adjacent_face) {
-            cout << "Error: Null pointer found in half-edge structure!" << endl;
-            return;
-        }
-
-        // Check for closed circuit (limit to 15 iterations)
-        myHalfedge* temp = he;
-        int count = 0;
-        while (temp && count < 15) {
-            temp = temp->next;
-            count++;
-        }
-        if (count >= 15) {
-            cout << "Error: Half-edge circuit is not closed!" << endl;
-            return;
-        }
-    }
-
-    // Check if adjacent half-edges are correctly connected to the face
-    for (myFace* face : faces) {
-        if (!face || !face->adjacent_halfedge) {
-            cout << "Error: Null pointer found in face structure!" << endl;
-            return;
-        }
-
-        myHalfedge* start = face->adjacent_halfedge;
-        myHalfedge* current = start;
-        do {
-            if (current->adjacent_face != face) {
-                cout << "Error: Half-edge not correctly connected to its face!" << endl;
-                return;
-            }
-            current = current->next;
-        } while (current && current != start);
-    }
-
-    // Check if the vertex normal matches the average of adjacent face normals
-    for (myVertex* vertex : vertices) {
-        if (!vertex || !vertex->point || !vertex->normal) {
-            cout << "Error: Null pointer found in vertex structure!" << endl;
-            return;
-        }
-
-        myVector3D averageNormal(0.0, 0.0, 0.0);
-        myHalfedge* start = vertex->originof;
-        myHalfedge* current = start;
-        int faceCount = 0;
-
-        if (!current) continue; // Skip if the vertex has no outgoing half-edge
-
-        do {
-            if (current->adjacent_face && current->adjacent_face->normal) {
-                averageNormal.dX += current->adjacent_face->normal->dX;
-                averageNormal.dY += current->adjacent_face->normal->dY;
-                averageNormal.dZ += current->adjacent_face->normal->dZ;
-                faceCount++;
-            }
-            current = current->twin ? current->twin->next : nullptr;
-        } while (current && current != start);
-
-        if (faceCount > 0) {
-            averageNormal = averageNormal/faceCount;
-            averageNormal.normalize();
-            if (*vertex->normal != averageNormal) {
-                cout << "Error: Vertex normal does not match the average of adjacent face normals!" << endl;
-                return;
-            }
-        }
-    }
-
-    // Check if the sum of face normals is consistent
-    myVector3D totalNormal(0.0, 0.0, 0.0);
-    for (myFace* face : faces) {
-        if (!face || !face->normal) {
-            cout << "Error: Null pointer found in face structure!" << endl;
-            return;
-        }
-        totalNormal.dX += face->normal->dX;
-        totalNormal.dY += face->normal->dY;
-        totalNormal.dZ += face->normal->dZ;
-    }
-    totalNormal = totalNormal / faces.size();
-    totalNormal.normalize();
-
-    cout << "Mesh check completed: No errors found!" << endl;
+    /**** TODO ****/
 }
 
 
@@ -186,11 +101,9 @@ bool myMesh::readFile(std::string filename)
 			myline >> x >> y >> z;
 			cout << "v " << x << " " << y << " " << z << endl;
 
-			myPoint3D* point3D = new myPoint3D(x, y, z);
-			myVertex* vertex = new myVertex;
-			vertex->point = point3D;
-			this->vertices.push_back(vertex);
-			
+			myVertex* v = new myVertex();
+			v->point = new myPoint3D(x, y, z);
+			vertices.push_back(v);
 		}
 		else if (t == "mtllib") {}
 		else if (t == "usemtl") {}
@@ -198,57 +111,58 @@ bool myMesh::readFile(std::string filename)
 		else if (t == "f")
 		{
 			faceids.clear();
-			while (myline >> u) // Read indices of vertices from a face
+			while (myline >> u)
 				faceids.push_back(atoi((u.substr(0, u.find("/"))).c_str()) - 1);
-			if (faceids.size() < 3) // Ignore degenerate faces
+
+			if (faceids.size() < 3)
 				continue;
 
-			hedges = new myHalfedge *[faceids.size()]; // Allocation
-			for (unsigned int i = 0; i < faceids.size(); i++) 
-				hedges[i] = new myHalfedge(); // Allocation
+			hedges = new myHalfedge * [faceids.size()];
+			for (unsigned int i = 0; i < faceids.size(); i++)
+				hedges[i] = new myHalfedge();
 
-			myFace *f = new myFace(); // Allocation
-			f->adjacent_halfedge = hedges[0]; // Connect the face with its incident edge
+			myFace* f = new myFace();
+			f->adjacent_halfedge = hedges[0];
 
 			for (unsigned int i = 0; i < faceids.size(); i++)
 			{
-				int iplusone = (i + 1) % faceids.size();
-				int iminusone = (i - 1 + faceids.size()) % faceids.size();
+				int nextindex = (i + 1) % faceids.size();
+				int previousindex = (i - 1 + faceids.size()) % faceids.size();
 
-				 // Connect prev and next half-edges
-				hedges[i]->prev = hedges[iminusone];
-				hedges[i]->next = hedges[iplusone];
+				//connexion of halfedges
+				hedges[i]->next = hedges[nextindex];
+				hedges[i]->prev = hedges[previousindex];
 
-				hedges[i]->source = vertices[faceids[i]];
-
-				// Map the edge to create its twin
-				pair<int, int> edge_key(faceids[i], faceids[iplusone]);
-				pair<int, int> twin_key(faceids[iplusone], faceids[i]);
-
-				auto it = twin_map.find(twin_key);
-				if (it != twin_map.end()) {
-					// Twin exists, assign it to the current half-edge
-					hedges[i]->twin = it->second; //pair
-					it->second->twin = hedges[i]; //pair
-					twin_map.erase(it);
-				} else {
-					// Twin does not exist, add this edge to the map
-					twin_map[edge_key] = hedges[i];
-				}
+				//attribution of faces
 				hedges[i]->adjacent_face = f;
 
-				// Add the half-edge to the mesh
+				//definitions origin of the halfedges
+				if (faceids[i] >= vertices.size()) continue;
+				hedges[i]->source = vertices[faceids[i]];
+				vertices[faceids[i]]->originof = hedges[i];
+
+				pair<int, int> edge_key(faceids[i], faceids[nextindex]);
+				pair<int, int> twin_key(faceids[nextindex], faceids[i]);
+				twin_map[edge_key] = hedges[i];
+
+				if (twin_map.find(twin_key) != twin_map.end())
+				{
+					hedges[i]->twin = twin_map[twin_key];
+					twin_map[twin_key]->twin = hedges[i];
+				}
+
+				//add halfedges to mesh
 				halfedges.push_back(hedges[i]);
 			}
 
-			// Add the face to the mesh
+			//add faces to mesh
 			faces.push_back(f);
-			delete[] hedges; // Free the allocated memory for half-edges
 		}
-	}
 
+	}
 	checkMesh();
 	normalize();
+    logMeshStatistics();
 
 	return true;
 }
@@ -357,53 +271,106 @@ void myMesh::simplify(myVertex *)
 }
 
 void myMesh::triangulate()
-{   
-    vector<myFace *> originalFaces = faces;
+{
+    std::vector<myFace*> original_faces = faces;
 
-    for (myFace *f : originalFaces) {
+    for (myFace* f : original_faces)
+    {
         triangulate(f);
     }
+
+    logMeshStatistics();
 }
 
-bool myMesh::triangulate(myFace *f)
+
+
+bool myMesh::triangulate(myFace* f)
 {
-    myHalfedge *start = f->adjacent_halfedge;
-    myHalfedge *current = start->next->next;
+    //recupere chaque halfedges
+    std::vector<myHalfedge*> hedge_list;
+    myHalfedge* start = f->adjacent_halfedge;
+    myHalfedge* current = start;
 
-    // Return false if the face is already a triangle
-    if (current->next == start) {
-        return false;
-    }
+    do {
+        hedge_list.push_back(current);
+        current = current->next;
+    } while (current != start);
 
-    // Split faces
-    while (current != start) {
-        myFace *newFace = new myFace();
-        myHalfedge *he1 = new myHalfedge();
-        myHalfedge *he2 = new myHalfedge();
-        myHalfedge *he3 = new myHalfedge();
+    int n = hedge_list.size();
+    if (n == 3) return false; //si un triangle passe
 
-        he1->source = start->source;
-        he2->source = current->prev->source;
-        he3->source = current->source;
+    //premier sommet point fixe
+    myVertex* v0 = hedge_list[0]->source;
 
+    auto it = std::find(faces.begin(), faces.end(), f);
+    if (it != faces.end()) faces.erase(it);
+
+    delete f;
+
+    //cration triangle
+    for (int i = 1; i < n - 1; ++i)
+    {
+        myFace* new_face = new myFace();
+
+        //creation halfedges
+        myHalfedge* he1 = new myHalfedge(); // v0 -> vi
+        myHalfedge* he2 = new myHalfedge(); // vi -> vi+1
+        myHalfedge* he3 = new myHalfedge(); // vi+1 -> v0
+
+        he1->source = v0;
+        he2->source = hedge_list[i]->source;
+        he3->source = hedge_list[i + 1]->source;
+
+        //connexion halfedges
         he1->next = he2; he2->next = he3; he3->next = he1;
         he1->prev = he3; he2->prev = he1; he3->prev = he2;
 
-        he1->adjacent_face = newFace;
-        he2->adjacent_face = newFace;
-        he3->adjacent_face = newFace;
+        //association halfedges a leur face
+        he1->adjacent_face = new_face;
 
-        newFace->adjacent_halfedge = he1;
+        if (!he1->source->originof) he1->source->originof = he1;
 
-        // Add new objects to the mesh
-        faces.push_back(newFace);
-        halfedges.push_back(he1);
-        halfedges.push_back(he2);
+        new_face->adjacent_halfedge = he1;
+
+        //ajoutdans mesh
+        faces.push_back(new_face);
         halfedges.push_back(he3);
-
-        current = current->next;
     }
 
     return true;
 }
 
+void myMesh::logMeshStatistics() {
+    int triangleCount = 0;
+    int squareCount = 0;
+    int otherPolygonCount = 0;
+
+    for (myFace* face : faces) {
+        if (!face || !face->adjacent_halfedge) continue;
+
+        // Count the number of vertices in the face
+        int vertexCount = 0;
+        myHalfedge* start = face->adjacent_halfedge;
+        myHalfedge* current = start;
+        do {
+            vertexCount++;
+            current = current->next;
+        } while (current != start);
+
+        // Classify the face based on the vertex count
+        if (vertexCount == 3) {
+            triangleCount++;
+        } else if (vertexCount == 4) {
+            squareCount++;
+        } else {
+            otherPolygonCount++;
+        }
+    }
+
+    // Print the counts
+    cout << endl;
+    cout << "Mesh statistics:" << endl;
+    cout << "  Triangles: " << triangleCount << endl;
+    cout << "  Squares: " << squareCount << endl;
+    cout << "  Other polygons: " << otherPolygonCount << endl;
+}
