@@ -32,27 +32,163 @@ void myMesh::clear()
 	vector<myFace *> empty_faces;         faces.swap(empty_faces);
 }
 
-/*
 void myMesh::checkMesh()
 {	
-	vector<myVertex *>::iterator it1;
-	
 	//Verify every vertices, every halfedges, every faces.
-	vector<myHalfedge *>::iterator it2;
-	for (it2 = halfedges.begin(); it2 != halfedges.end(); it2++)
-	{
-		if ((*it2)->twin == NULL)
-			break;
-		
-			//if
-	}
-	if (it2 != halfedges.end())
-		cout << "Error! Not all edges have their twins!\n";
-	else cout << "Each edge has a twin!\n";
 
-	vector<myFace *>::iterator it3;
+	cout << "\nChecking Vertices :" << endl;
+	checkVerticesNull();
+	// checkCircuitAroundVertex();
+	
+	cout << "\nChecking Halfedges :" << endl;
+	checkHalfedgesNull();
+	// checkCircuitHalfedge();
+
+	cout << "\n Checking Faces :" << endl;
+	checkFacesNull();
+	checkCircuitAroundFace();
 }
-*/
+
+void myMesh::checkVerticesNull()
+{
+	vector<myVertex *>::iterator it;
+	for (it = vertices.begin(); it != vertices.end(); it++)
+	{
+		if ((*it)->originof == NULL)
+			throw std::runtime_error("Error! Not all vertices have their origin halfedge!");
+		if ((*it)->point == NULL)
+			throw std::runtime_error("Error! Not all vertices have their point!");
+		if ((*it)->normal == NULL)
+			throw std::runtime_error("Error! Not all vertices have their normal!");
+		
+		if ((*it)->originof->source != *it)
+			throw std::runtime_error("Error! The halfedge around the vertex doesn't have the same source!");
+	}
+	cout << "All vertices have their originof halfedge, point and normal!" << endl;
+}
+
+void myMesh::checkHalfedgesNull()
+{
+	vector<myHalfedge *>::iterator it;
+	for (it = halfedges.begin(); it != halfedges.end(); it++)
+	{
+		if ((*it)->twin == NULL)
+			throw std::runtime_error("Error! Not all edges have their twins!");
+		else if ((*it)->twin->twin != *it)
+			throw std::runtime_error("Error! The twins are not reciprocal!");
+
+		if ((*it)->source == NULL)
+			throw std::runtime_error("Error! Not all edges have their source vertex!");
+		if ((*it)->adjacent_face == NULL)
+			throw std::runtime_error("Error! Not all edges have their adjacent face!");
+		if ((*it)->next == NULL)
+			throw std::runtime_error("Error! Not all edges have their next halfedge!");
+		if ((*it)->prev == NULL)
+			throw std::runtime_error("Error! Not all edges have their previous halfedge!");
+	}
+	cout << "All halfedges have twins, source, adjacent faces, next and prev he!" << endl;
+}
+
+void myMesh::checkFacesNull()
+{
+	vector<myFace *>::iterator it;
+	for (it = faces.begin(); it != faces.end(); it++)
+	{
+		if ((*it)->adjacent_halfedge == NULL)
+			throw std::runtime_error("Error! Not all faces have their adjacent halfedge!");
+		if ((*it)->normal == NULL)
+			throw std::runtime_error("Error! Not all faces have their normals!");
+	}
+	cout << "All faces have their adjacent halfedge and normals!" << endl;
+}
+
+void myMesh::checkCircuitAroundVertex()
+{	
+	vector<myVertex *>::iterator it;
+	for (it = vertices.begin(); it != vertices.end(); it++)
+	{
+		myHalfedge* start = (*it)->originof;
+		myHalfedge* heNext = start;
+		myHalfedge* hePrev = start;
+		int count = 0;
+
+		do {
+			count++;
+			heNext = heNext->twin->next;
+			hePrev = hePrev->prev->twin;
+			if (heNext->source != (*it) || hePrev->source != (*it)) {
+				throw std::runtime_error("Error! Halfedges around the vertex don't have the same source!");
+			}
+			if (count > 35) {
+				throw std::runtime_error("Error! Too many halfedges around the vertex!");
+			}
+		} while (heNext != start && hePrev != start);
+
+		if (heNext != start || hePrev != start) {
+			throw std::runtime_error("Error! Halfedges twin->next circuit is not closed!");
+		}
+		if (hePrev != start) {
+			throw std::runtime_error("Error! Halfedges prev->twin circuit is not closed!");
+		}
+	}
+	cout << "All halfedges around vertices have the same source vertex!" << endl;
+}
+
+void myMesh::checkCircuitHalfedge()
+{
+	vector<myHalfedge *>::iterator it;
+	for (it = halfedges.begin(); it != halfedges.end(); it++)
+	{
+		myHalfedge* start = *it;
+		myHalfedge* heNext = start;
+		myHalfedge* hePrev = start;
+		myFace* f = (*it)->adjacent_face;
+		int count = 0;
+		
+		do{
+			count++;
+			heNext = heNext->next;
+			hePrev = hePrev->prev;
+			if (heNext->adjacent_face != f || hePrev->adjacent_face != f) {
+				throw std::runtime_error("Error! Halfedge next/prev circuit is not around the same face!");
+			}
+			if (count > 15) {
+				throw std::runtime_error("Error! Halfedge circuit is not closed (> 15 edges)!");
+			}
+
+		}
+		while (heNext != start && hePrev != start);
+
+		if (heNext != start || hePrev != start) {
+			throw std::runtime_error("Error! Halfedge next/prev circuit is not closed!");
+		}
+	}
+	cout << "All halfedges are closed circuits!" << endl;
+}
+
+void myMesh::checkCircuitAroundFace()
+{	
+	vector<myFace *>::iterator it;
+	for (it = faces.begin(); it != faces.end(); it++)
+	{
+		myHalfedge* start = (*it)->adjacent_halfedge;
+		myHalfedge* he = start;
+		int count = 0;
+
+		do {
+			count++;
+			he = he->next;
+			if (count > 25) {
+				throw std::runtime_error("Error! Too many halfedges around the face!");
+			}
+		} while (he != start);
+
+		if (he != start) {
+			throw std::runtime_error("Error! Halfedges circuit is not closed!");
+		}
+	}
+	cout << "All faces are closed circuits!" << endl;
+}
 
 /*
 vérifier en partant de origineof
@@ -67,12 +203,6 @@ Sommet :
 
 Face : Faire une boucle sur toutes les faces, et on fait la somme de tous les vecteurs normaux divisé par le nombre de face
 */
-
-void myMesh::checkMesh()
-{
-    /**** TODO ****/
-}
-
 
 bool myMesh::readFile(std::string filename)
 {
@@ -157,6 +287,7 @@ bool myMesh::readFile(std::string filename)
 
 			//add faces to mesh
 			faces.push_back(f);
+			delete[] hedges; // Free the allocated memory for half-edges
 		}
 
 	}

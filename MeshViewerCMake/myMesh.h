@@ -14,6 +14,16 @@ public:
 	std::string name;
 
 	void checkMesh();
+
+	void checkVerticesNull();
+	void checkHalfedgesNull();
+	void checkFacesNull();
+
+	void checkCircuitAroundVertex();
+	void checkCircuitHalfedge();
+	void checkCircuitAroundFace();
+
+
 	bool readFile(std::string filename);
 	void computeNormals();
 	void normalize();
