@@ -25,6 +25,8 @@ public:
 
 
 	bool readFile(std::string filename);
+	void checkNonManifoldEdges();
+	void checkDisconnectedComponents();
 	void computeNormals();
 	void normalize();
 
@@ -37,6 +39,7 @@ public:
 
 	void triangulate();
 	bool triangulate(myFace *);
+	bool triangulateF(myFace *);
 	void simplify();
 	void simplify(myVertex *);
 	void logMeshStatistics();

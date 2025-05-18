@@ -7,6 +7,8 @@
 #include <GL/glew.h>
 #include "myVector3D.h"
 #include <algorithm>
+#include <queue>
+#include <set>
 
 using namespace std;
 
@@ -38,11 +40,11 @@ void myMesh::checkMesh()
 
 	cout << "\nChecking Vertices :" << endl;
 	checkVerticesNull();
-	// checkCircuitAroundVertex();
+	checkCircuitAroundVertex();
 	
 	cout << "\nChecking Halfedges :" << endl;
 	checkHalfedgesNull();
-	// checkCircuitHalfedge();
+	checkCircuitHalfedge();
 
 	cout << "\n Checking Faces :" << endl;
 	checkFacesNull();
@@ -115,20 +117,17 @@ void myMesh::checkCircuitAroundVertex()
 		do {
 			count++;
 			heNext = heNext->twin->next;
-			hePrev = hePrev->prev->twin;
-			if (heNext->source != (*it) || hePrev->source != (*it)) {
+
+			if (heNext->source != (*it)) {
 				throw std::runtime_error("Error! Halfedges around the vertex don't have the same source!");
 			}
 			if (count > 35) {
 				throw std::runtime_error("Error! Too many halfedges around the vertex!");
 			}
-		} while (heNext != start && hePrev != start);
+		} while (heNext != start);
 
-		if (heNext != start || hePrev != start) {
+		if (heNext != start) {
 			throw std::runtime_error("Error! Halfedges twin->next circuit is not closed!");
-		}
-		if (hePrev != start) {
-			throw std::runtime_error("Error! Halfedges prev->twin circuit is not closed!");
 		}
 	}
 	cout << "All halfedges around vertices have the same source vertex!" << endl;
@@ -141,26 +140,24 @@ void myMesh::checkCircuitHalfedge()
 	{
 		myHalfedge* start = *it;
 		myHalfedge* heNext = start;
-		myHalfedge* hePrev = start;
 		myFace* f = (*it)->adjacent_face;
 		int count = 0;
 		
 		do{
 			count++;
 			heNext = heNext->next;
-			hePrev = hePrev->prev;
-			if (heNext->adjacent_face != f || hePrev->adjacent_face != f) {
-				throw std::runtime_error("Error! Halfedge next/prev circuit is not around the same face!");
+			if (heNext->adjacent_face != f) {
+				throw std::runtime_error("Error! Halfedge next circuit is not around the same face!");
 			}
 			if (count > 15) {
 				throw std::runtime_error("Error! Halfedge circuit is not closed (> 15 edges)!");
 			}
 
 		}
-		while (heNext != start && hePrev != start);
+		while (heNext != start);
 
-		if (heNext != start || hePrev != start) {
-			throw std::runtime_error("Error! Halfedge next/prev circuit is not closed!");
+		if (heNext != start) {
+			throw std::runtime_error("Error! Halfedge next circuit is not closed!");
 		}
 	}
 	cout << "All halfedges are closed circuits!" << endl;
@@ -190,47 +187,36 @@ void myMesh::checkCircuitAroundFace()
 	cout << "All faces are closed circuits!" << endl;
 }
 
-/*
-vérifier en partant de origineof
-
-pour chaque vertex, on calcul le vecteur moyen des normales des faces si il est bien égal au vecteur normal du sommet
-    - on fait la somme de tous les vecteurs normaux divisé par le nombre de face
-    - on vérifie si le vecteur normal du sommet est égal à celui calculé précédemment 
-
-Demi-arêtes : 
-    
-Sommet : 
-
-Face : Faire une boucle sur toutes les faces, et on fait la somme de tous les vecteurs normaux divisé par le nombre de face
-*/
-
 bool myMesh::readFile(std::string filename)
 {
 	string s, t, u;
 	vector<int> faceids;
-	myHalfedge **hedges;
+	myHalfedge** hedges;
 
 	ifstream fin(filename);
 	if (!fin.is_open()) {
 		cout << "Unable to open file!\n";
 		return false;
 	}
+	
 	name = filename;
 
-	map<pair<int, int>, myHalfedge *> twin_map;
-	map<pair<int, int>, myHalfedge *>::iterator it;
+	map<pair<int, int>, myHalfedge*> twin_map;
+	map<pair<int, int>, myHalfedge*>::iterator it;
+
+	myFace* f = nullptr;
 
 	while (getline(fin, s))
 	{
 		stringstream myline(s);
 		myline >> t;
+
 		if (t == "g") {}
 		else if (t == "v")
 		{
 			float x, y, z;
 			myline >> x >> y >> z;
 			cout << "v " << x << " " << y << " " << z << endl;
-
 			myVertex* v = new myVertex();
 			v->point = new myPoint3D(x, y, z);
 			vertices.push_back(v);
@@ -241,63 +227,127 @@ bool myMesh::readFile(std::string filename)
 		else if (t == "f")
 		{
 			faceids.clear();
-			while (myline >> u)
+			while (myline >> u) // read indices of vertices from a face into a container - it helps to access them later 
 				faceids.push_back(atoi((u.substr(0, u.find("/"))).c_str()) - 1);
-
-			if (faceids.size() < 3)
+			if (faceids.size() < 3) // ignore degenerate faces
 				continue;
 
-			hedges = new myHalfedge * [faceids.size()];
+			hedges = new myHalfedge * [faceids.size()]; // allocate the array for storing pointers to half-edges
 			for (unsigned int i = 0; i < faceids.size(); i++)
-				hedges[i] = new myHalfedge();
+				hedges[i] = new myHalfedge(); // pre-allocate new half-edges
 
-			myFace* f = new myFace();
-			f->adjacent_halfedge = hedges[0];
+			f = new myFace(); // allocate the new face
+			f->adjacent_halfedge = hedges[0]; // connect the face with incident edge
 
 			for (unsigned int i = 0; i < faceids.size(); i++)
 			{
-				int nextindex = (i + 1) % faceids.size();
-				int previousindex = (i - 1 + faceids.size()) % faceids.size();
+				int iplusone = (i + 1) % faceids.size();
+				int iminusone = (i - 1 + faceids.size()) % faceids.size();
 
-				//connexion of halfedges
-				hedges[i]->next = hedges[nextindex];
-				hedges[i]->prev = hedges[previousindex];
+				// YOUR CODE COMES HERE!
 
-				//attribution of faces
+				// connect prevs, and next
+				hedges[i]->next = hedges[iplusone];
+				hedges[i]->prev = hedges[iminusone];
+
 				hedges[i]->adjacent_face = f;
 
-				//definitions origin of the halfedges
-				if (faceids[i] >= vertices.size()) continue;
+				// search for the twins using twin_map
+				pair<int, int> edge_key(faceids[i], faceids[iplusone]);
+				it = twin_map.find(edge_key);
+				if (it != twin_map.end()) {
+					hedges[i]->twin = it->second;
+					it->second->twin = hedges[i];
+				}
+				else {
+					twin_map[make_pair(faceids[iplusone], faceids[i])] = hedges[i];
+				}
+
+				// set originof
 				hedges[i]->source = vertices[faceids[i]];
 				vertices[faceids[i]]->originof = hedges[i];
 
-				pair<int, int> edge_key(faceids[i], faceids[nextindex]);
-				pair<int, int> twin_key(faceids[nextindex], faceids[i]);
-				twin_map[edge_key] = hedges[i];
-
-				if (twin_map.find(twin_key) != twin_map.end())
-				{
-					hedges[i]->twin = twin_map[twin_key];
-					twin_map[twin_key]->twin = hedges[i];
-				}
-
-				//add halfedges to mesh
+				// push edges to halfedges in myMesh
 				halfedges.push_back(hedges[i]);
 			}
-
-			//add faces to mesh
+			// push faces to faces in myMesh
 			faces.push_back(f);
-			delete[] hedges; // Free the allocated memory for half-edges
 		}
-
 	}
+	
+
+	checkNonManifoldEdges();
+	checkDisconnectedComponents();
 	checkMesh();
 	normalize();
-    logMeshStatistics();
+
+	logMeshStatistics();
 
 	return true;
 }
 
+void myMesh::checkNonManifoldEdges() {
+    map<pair<int, int>, int> edgeCount;
+
+    for (myHalfedge* he : halfedges) {
+        // Find the indices of the source and next vertices
+        auto it1 = find(vertices.begin(), vertices.end(), he->source);
+        auto it2 = find(vertices.begin(), vertices.end(), he->next->source);
+
+        if (it1 == vertices.end() || it2 == vertices.end()) {
+            throw std::runtime_error("Error! Halfedge source or next vertex not found in vertices list!");
+        }
+
+        int v1 = distance(vertices.begin(), it1);
+        int v2 = distance(vertices.begin(), it2);
+
+        // Create an edge key with sorted vertex indices
+        pair<int, int> edgeKey = make_pair(min(v1, v2), max(v1, v2));
+        edgeCount[edgeKey]++;
+    }
+
+    for (auto& entry : edgeCount) {
+        if (entry.second > 2) {
+            cout << "Non-manifold edge detected between vertices " << entry.first.first
+                 << " and " << entry.first.second << " (shared by " << entry.second << " faces)" << endl;
+        }
+    }
+	cout << "Non-manifold edge check completed." << endl;
+}
+
+void myMesh::checkDisconnectedComponents() {
+    set<myVertex*> visited;
+    queue<myVertex*> toVisit;
+
+    if (!vertices.empty()) {
+        toVisit.push(vertices[0]);
+        visited.insert(vertices[0]);
+    }
+
+    while (!toVisit.empty()) {
+        myVertex* v = toVisit.front();
+        toVisit.pop();
+
+        myHalfedge* start = v->originof;
+        myHalfedge* he = start;
+
+        do {
+            myVertex* neighbor = he->next->source;
+            if (visited.find(neighbor) == visited.end()) {
+                visited.insert(neighbor);
+                toVisit.push(neighbor);
+            }
+            he = he->twin->next;
+        } while (he != start);
+    }
+
+    if (visited.size() != vertices.size()) {
+        cout << "Disconnected components detected! Visited " << visited.size()
+             << " out of " << vertices.size() << " vertices." << endl;
+    } else {
+        cout << "Mesh is fully connected." << endl;
+    }
+}
 
 void myMesh::computeNormals() {
     // Compute normals for all faces
@@ -392,13 +442,39 @@ void myMesh::subdivisionCatmullClark()
 }
 
 void myMesh::simplify()
-{
-	/**** TODO ****/
-}
+{	
+	myHalfedge* shortest_he = nullptr;
+	for (myHalfedge* he : halfedges) {
+		if(shortest_he == nullptr || he->length() <= shortest_he->length())
+		{
+			shortest_he = he;
+		}
+	}
 
-void myMesh::simplify(myVertex *)
-{
-	/**** TODO ****/
+	myVertex* v1 = shortest_he->source;
+	myVertex* v2 = shortest_he->twin->source;
+	
+	// Move the first vertex to the middle of the edge
+	v1->point->X = (v1->point->X + v2->point->X) / 2;
+	v1->point->Y = (v1->point->Y + v2->point->Y) / 2;
+	v1->point->Z = (v1->point->Z + v2->point->Z) / 2;
+
+	// Reassign the halfedges of second vertex
+	myHalfedge* start1 = v1->originof;
+	myHalfedge* start2 = v2->originof;
+	do
+	{
+		myHalfedge* heNext = start1->twin->next;
+		if (start1->source == v2) {
+			start1->source = v1;
+			v1->originof = start1;
+		}
+		start1 = heNext;
+		if (start1 == start2) break;
+		
+	} while (start1 != nullptr);
+		
+	logMeshStatistics();
 }
 
 void myMesh::triangulate()
@@ -407,65 +483,60 @@ void myMesh::triangulate()
 
     for (myFace* f : original_faces)
     {
-        triangulate(f);
+        // Triangulate the face
+		triangulate(f);
     }
 
     logMeshStatistics();
 }
 
 
-
-bool myMesh::triangulate(myFace* f)
-{
-    //recupere chaque halfedges
-    std::vector<myHalfedge*> hedge_list;
+bool myMesh::triangulate(myFace* f) {
     myHalfedge* start = f->adjacent_halfedge;
-    myHalfedge* current = start;
+    myHalfedge* current = start->next;
 
-    do {
-        hedge_list.push_back(current);
-        current = current->next;
-    } while (current != start);
+    // Check if the face is already a triangle
+    if (current->next->next == start) return false;
 
-    int n = hedge_list.size();
-    if (n == 3) return false; //si un triangle passe
-
-    //premier sommet point fixe
-    myVertex* v0 = hedge_list[0]->source;
-
+    // Remove the original face from the mesh
     auto it = std::find(faces.begin(), faces.end(), f);
     if (it != faces.end()) faces.erase(it);
 
-    delete f;
-
-    //cration triangle
-    for (int i = 1; i < n - 1; ++i)
-    {
+    // Traverse the half-edges and create triangles
+    while (current->next != start) {
         myFace* new_face = new myFace();
 
-        //creation halfedges
-        myHalfedge* he1 = new myHalfedge(); // v0 -> vi
-        myHalfedge* he2 = new myHalfedge(); // vi -> vi+1
-        myHalfedge* he3 = new myHalfedge(); // vi+1 -> v0
+        // Create new half-edges for the triangle
+        myHalfedge* he1 = new myHalfedge();
+        myHalfedge* he2 = new myHalfedge();
+        myHalfedge* he3 = new myHalfedge();
 
-        he1->source = v0;
-        he2->source = hedge_list[i]->source;
-        he3->source = hedge_list[i + 1]->source;
+        // Set the sources of the half-edges
+        he1->source = start->source;
+        he2->source = current->source;
+        he3->source = current->next->source;
 
-        //connexion halfedges
+        // Link the half-edges to form a triangle
         he1->next = he2; he2->next = he3; he3->next = he1;
         he1->prev = he3; he2->prev = he1; he3->prev = he2;
 
-        //association halfedges a leur face
+        // Assign the new face to the half-edges
         he1->adjacent_face = new_face;
+        he2->adjacent_face = new_face;
+        he3->adjacent_face = new_face;
 
-        if (!he1->source->originof) he1->source->originof = he1;
-
+        // Set the adjacent half-edge of the new face
         new_face->adjacent_halfedge = he1;
 
-        //ajoutdans mesh
+        // Update the `originof` property for vertices
+        if (!he1->source->originof) he1->source->originof = he1;
+
+        // Add the new face and half-edges to the mesh
         faces.push_back(new_face);
         halfedges.push_back(he3);
+
+        // Move to the next edge
+        current = current->next;
     }
 
     return true;

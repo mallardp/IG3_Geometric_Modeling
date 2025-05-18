@@ -18,6 +18,8 @@ public:
 
 	int index; //use as you wish.
 
+	double length();
+
 	myHalfedge(void);
 	void copy(myHalfedge *);
 	~myHalfedge(void);
