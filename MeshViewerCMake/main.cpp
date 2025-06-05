@@ -46,6 +46,13 @@ void menu(int item)
 {
 	switch(item)
 	{
+	case MENU_SIMPLIFY:
+	 	{
+			m->simplify();
+			m->computeNormals();
+			makeBuffers(m);
+			break;
+	 	}
 	case MENU_TRIANGULATE:
 		{
 			m->triangulate();
@@ -158,11 +165,6 @@ void menu(int item)
 			exit(0);
 			break;
 		}
-	case MENU_SIMPLIFY:
-	 	{
-			m->simplify();
-			break;
-	 	}
 	}
 	glutPostRedisplay();
 }
@@ -371,7 +373,7 @@ void initMesh()
 	
 	cout << "Reading mesh from file...\n";
 	m = new myMesh();
-	if (m->readFile("dolphin.obj")) {
+	if (m->readFile("cube.obj")) {
 		m->computeNormals();
 		makeBuffers(m);
 	}

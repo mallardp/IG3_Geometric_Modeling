@@ -443,37 +443,100 @@ void myMesh::subdivisionCatmullClark()
 
 void myMesh::simplify()
 {	
-	myHalfedge* shortest_he = nullptr;
+	if (halfedges.empty()) return;
+
+	// 1. Find the shortest halfedge
+	myHalfedge* shortest = nullptr;
 	for (myHalfedge* he : halfedges) {
-		if(shortest_he == nullptr || he->length() <= shortest_he->length())
+		if(shortest == nullptr || he->length() <= shortest->length())
 		{
-			shortest_he = he;
+			shortest = he;
 		}
 	}
 
-	myVertex* v1 = shortest_he->source;
-	myVertex* v2 = shortest_he->twin->source;
+	myVertex* vA = shortest->source;
+	myVertex* vB = shortest->twin->source;
 	
-	// Move the first vertex to the middle of the edge
-	v1->point->X = (v1->point->X + v2->point->X) / 2;
-	v1->point->Y = (v1->point->Y + v2->point->Y) / 2;
-	v1->point->Z = (v1->point->Z + v2->point->Z) / 2;
+	// 2. Move the first vertex to the middle of the edge
+	vA->point->X = (vA->point->X + vB->point->X) / 2;
+	vA->point->Y = (vA->point->Y + vB->point->Y) / 2;
+	vA->point->Z = (vA->point->Z + vB->point->Z) / 2;
 
-	// Reassign the halfedges of second vertex
-	myHalfedge* start1 = v1->originof;
-	myHalfedge* start2 = v2->originof;
+	// 3. Reassign the halfedges of second vertex	
+	for (myHalfedge* he : halfedges) {
+        if (he->source == vB) {
+            he->source = vA;
+            vA->originof = he;
+        }
+    }
+
+	// Number of halfedges in the face
+	myFace* face = shortest->adjacent_face;
+	if (!face) {
+		cout << "No face associated with the shortest halfedge." << endl;
+		return;
+	}
+	myHalfedge* start = face->adjacent_halfedge;
+	myHalfedge* current = start;
+	int count = 0;
 	do
 	{
-		myHalfedge* heNext = start1->twin->next;
-		if (start1->source == v2) {
-			start1->source = v1;
-			v1->originof = start1;
+		count++;
+		current = current->next;
+	} while (current != start);
+
+	cout << "Number of halfedges in the face: " << count << endl;
+	
+	// 4. Remove shortest and its twin from the halfedge structure
+    shortest->prev->next = shortest->next;
+    shortest->next->prev = shortest->prev;
+    shortest->twin->prev->next = shortest->twin->next;
+    shortest->twin->next->prev = shortest->twin->prev;
+
+	// 5. Update adjacent_face pointers if needed
+    if (shortest->adjacent_face)
+        shortest->adjacent_face->adjacent_halfedge = shortest->next;
+    if (shortest->twin->adjacent_face)
+        shortest->twin->adjacent_face->adjacent_halfedge = shortest->twin->next;
+
+    // 6. Remove faces if they become degenerate (triangle collapsed)
+	if (count < 3)
+	{
+		myHalfedge* start = shortest->adjacent_face->adjacent_halfedge;
+		myHalfedge* current = start;
+		std::vector<myHalfedge*> hes_to_remove;
+		do {
+			if(current != shortest && current->twin != shortest->twin) {
+				// Remove the halfedge from the face
+				hes_to_remove.push_back(current);
+			}
+			current = current->next;
+		} while (current != start);
+
+		for (myHalfedge* he : hes_to_remove) {
+			delete he;
 		}
-		start1 = heNext;
-		if (start1 == start2) break;
 		
-	} while (start1 != nullptr);
-		
+		auto it = std::find(faces.begin(), faces.end(), shortest->adjacent_face);
+		if (it != faces.end()) {
+			faces.erase(it);
+			delete shortest->adjacent_face;
+		}
+		cout << "Removed degenerate face after edge collapse." << endl;
+	} else {
+		cout << "No degenerate face removal needed." << endl;
+	}
+	
+
+    // 7. Remove the halfedges and vertex from the mesh
+    halfedges.erase(std::remove(halfedges.begin(), halfedges.end(), shortest), halfedges.end());
+    halfedges.erase(std::remove(halfedges.begin(), halfedges.end(), shortest->twin), halfedges.end());
+    vertices.erase(std::remove(vertices.begin(), vertices.end(), vB), vertices.end());
+    delete shortest;
+    delete shortest->twin;
+    delete vB;
+
+	checkMesh();
 	logMeshStatistics();
 }
 
