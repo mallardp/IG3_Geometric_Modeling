@@ -14,11 +14,12 @@ public:
 	myFace *adjacent_face; 
 	myHalfedge *next;  
 	myHalfedge *prev;  
-	myHalfedge *twin;  
+	myHalfedge *twin;
+	double length;
 
 	int index; //use as you wish.
 
-	double length();
+	void calculateLength();
 
 	myHalfedge(void);
 	void copy(myHalfedge *);

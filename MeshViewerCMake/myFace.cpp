@@ -15,6 +15,19 @@ myFace::~myFace(void)
 	if (normal) delete normal;
 }
 
+int myFace::countEdges(){
+	myHalfedge *h = adjacent_halfedge;
+	int count = 0;
+	if (h == NULL) return 0;
+
+	do {
+		count++;
+		h = h->next;
+	} while (h != adjacent_halfedge);
+
+	return count;
+}
+
 void myFace::computeNormal()
 {
 	myHalfedge *h = adjacent_halfedge;

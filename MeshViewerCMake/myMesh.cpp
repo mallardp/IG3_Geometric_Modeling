@@ -443,98 +443,132 @@ void myMesh::subdivisionCatmullClark()
 
 void myMesh::simplify()
 {	
-	if (halfedges.empty()) return;
+	if (faces.size() < 3) {
+		cout << "Mesh has faces with less than 3 halfedges." << endl;
+		cout << "Cannot simplify further." << endl;
+		return;
+	}
 
-	// 1. Find the shortest halfedge
+	// 1) Calculate lengths of all halfedges
+	for (myHalfedge* he : halfedges) {
+		if (!he || !he->source || !he->source->point ||
+			!he->twin || !he->twin->source || !he->twin->source->point) {
+			cout << "Invalid halfedge detected." << endl;
+			return;
+		}
+		he->calculateLength();
+	}
+
+	// 2) Find the shortest halfedge
 	myHalfedge* shortest = nullptr;
 	for (myHalfedge* he : halfedges) {
-		if(shortest == nullptr || he->length() <= shortest->length())
+		if(shortest == nullptr || he->length < shortest->length)
 		{
 			shortest = he;
 		}
 	}
-
-	myVertex* vA = shortest->source;
-	myVertex* vB = shortest->twin->source;
-	
-	// 2. Move the first vertex to the middle of the edge
-	vA->point->X = (vA->point->X + vB->point->X) / 2;
-	vA->point->Y = (vA->point->Y + vB->point->Y) / 2;
-	vA->point->Z = (vA->point->Z + vB->point->Z) / 2;
-
-	// 3. Reassign the halfedges of second vertex	
-	for (myHalfedge* he : halfedges) {
-        if (he->source == vB) {
-            he->source = vA;
-            vA->originof = he;
-        }
+	if (!shortest || !shortest->twin) {
+        cout << "Invalid shortest halfedge." << endl;
+        return;
     }
 
-	// Number of halfedges in the face
-	myFace* face = shortest->adjacent_face;
-	if (!face) {
-		cout << "No face associated with the shortest halfedge." << endl;
-		return;
-	}
-	myHalfedge* start = face->adjacent_halfedge;
-	myHalfedge* current = start;
-	int count = 0;
-	do
-	{
-		count++;
-		current = current->next;
-	} while (current != start);
+	myHalfedge* he1 = shortest;
+	myHalfedge* he2 = shortest->twin;
+	myVertex* vA = he1->source;
+	myVertex* vB = he2->source;
 
-	cout << "Number of halfedges in the face: " << count << endl;
+	// 3) Create a new vertex at the midpoint of vA and vB
+	myVertex* middleVertex = new myVertex();
+	middleVertex->point = new myPoint3D(
+		(vA->point->X + vB->point->X) / 2,
+		(vA->point->Y + vB->point->Y) / 2,
+		(vA->point->Z + vB->point->Z) / 2
+	);
+	middleVertex->originof = he1->prev->twin;
 	
-	// 4. Remove shortest and its twin from the halfedge structure
-    shortest->prev->next = shortest->next;
-    shortest->next->prev = shortest->prev;
-    shortest->twin->prev->next = shortest->twin->next;
-    shortest->twin->next->prev = shortest->twin->prev;
+	// 4) Update sources of halfedges around vertex A&B
+	auto updateSources = [middleVertex](myVertex* v) {
+        if (!v || !v->originof) return;
+        myHalfedge* start = v->originof;
+        myHalfedge* he = start;
+        do {
+            if (he) he->source = middleVertex;
+            he = he->twin ? he->twin->next : nullptr;
+        } while (he && he != start);
+    };
+    updateSources(vA);
+    updateSources(vB);
 
-	// 5. Update adjacent_face pointers if needed
-    if (shortest->adjacent_face)
-        shortest->adjacent_face->adjacent_halfedge = shortest->next;
-    if (shortest->twin->adjacent_face)
-        shortest->twin->adjacent_face->adjacent_halfedge = shortest->twin->next;
+	// Function to remove a halfedge
+	auto removeHalfedge = [this](myHalfedge* he) {
+		auto it = std::find(halfedges.begin(), halfedges.end(), he);
+		halfedges.erase(it);
+		delete he;
+	};
 
-    // 6. Remove faces if they become degenerate (triangle collapsed)
-	if (count < 3)
-	{
-		myHalfedge* start = shortest->adjacent_face->adjacent_halfedge;
-		myHalfedge* current = start;
-		std::vector<myHalfedge*> hes_to_remove;
-		do {
-			if(current != shortest && current->twin != shortest->twin) {
-				// Remove the halfedge from the face
-				hes_to_remove.push_back(current);
-			}
-			current = current->next;
-		} while (current != start);
+	// Function to remove a vertex
+    auto removeVertex = [this](myVertex* v) {
+        auto it = std::find(vertices.begin(), vertices.end(), v);
+        vertices.erase(it);
+		delete v;
+    };
 
-		for (myHalfedge* he : hes_to_remove) {
-			delete he;
+	// Function to remove a triangle face
+    auto removeTriangleFace = [this, removeHalfedge](myHalfedge* he) {
+		myHalfedge* he1 = he;
+		myHalfedge* he2 = he1->next;
+		myHalfedge* he3 = he2->next;
+
+		myVertex* v3 = he3->source;
+
+		if (v3->originof == he3) {
+			v3->originof = he3->twin->next;
 		}
-		
-		auto it = std::find(faces.begin(), faces.end(), shortest->adjacent_face);
-		if (it != faces.end()) {
-			faces.erase(it);
-			delete shortest->adjacent_face;
-		}
-		cout << "Removed degenerate face after edge collapse." << endl;
+
+		myHalfedge* twin1 = he1->twin;
+		myHalfedge* twin2 = he2->twin;
+		myHalfedge* twin3 = he3->twin;
+
+		twin2->twin = twin3;
+		twin3->twin = twin2;
+
+        auto it = std::find(faces.begin(), faces.end(), he->adjacent_face);
+        faces.erase(it);
+        delete he->adjacent_face;
+
+		removeHalfedge(he1);
+		removeHalfedge(he2);
+		removeHalfedge(he3);
+    };
+
+	// Function to simplify a non-triangle face
+    auto updateNonTriangleFace = [removeHalfedge](myHalfedge* he) {
+        if (he->adjacent_face->adjacent_halfedge == he) {
+            he->adjacent_face->adjacent_halfedge = he->next;
+        }
+        he->next->prev = he->prev;
+        he->prev->next = he->next;
+		removeHalfedge(he);
+    };
+	
+
+	// Check if shortest->adjacent_face is a triangle
+	if (he1->adjacent_face && he1->adjacent_face->countEdges() == 3) {
+		removeTriangleFace(he1);
 	} else {
-		cout << "No degenerate face removal needed." << endl;
+		updateNonTriangleFace(he1);
 	}
-	
 
-    // 7. Remove the halfedges and vertex from the mesh
-    halfedges.erase(std::remove(halfedges.begin(), halfedges.end(), shortest), halfedges.end());
-    halfedges.erase(std::remove(halfedges.begin(), halfedges.end(), shortest->twin), halfedges.end());
-    vertices.erase(std::remove(vertices.begin(), vertices.end(), vB), vertices.end());
-    delete shortest;
-    delete shortest->twin;
-    delete vB;
+	// Check if shortest->twin->adjacent_face is a triangle
+	if (he2->adjacent_face && he2->adjacent_face->countEdges() == 3) {
+		removeTriangleFace(he2);
+	} else {
+		updateNonTriangleFace(he2);
+	}
+
+    vertices.push_back(middleVertex);    
+	removeVertex(vA);
+    removeVertex(vB);
 
 	checkMesh();
 	logMeshStatistics();
@@ -542,64 +576,75 @@ void myMesh::simplify()
 
 void myMesh::triangulate()
 {
-    std::vector<myFace*> original_faces = faces;
-
-    for (myFace* f : original_faces)
-    {
-        // Triangulate the face
+    int length = faces.size();
+	for (int i = 0; i < length; i++) {
+		myFace* f = faces[i];
 		triangulate(f);
-    }
+	}
 
     logMeshStatistics();
 }
 
-
 bool myMesh::triangulate(myFace* f) {
+    // No triangulation needed
+    if (f->countEdges() == 3) {
+        return false;
+    }
+
     myHalfedge* start = f->adjacent_halfedge;
-    myHalfedge* current = start->next;
+    myVertex* commonSource = start->source;
+    myHalfedge* current = start;
 
-    // Check if the face is already a triangle
-    if (current->next->next == start) return false;
-
-    // Remove the original face from the mesh
-    auto it = std::find(faces.begin(), faces.end(), f);
-    if (it != faces.end()) faces.erase(it);
-
-    // Traverse the half-edges and create triangles
-    while (current->next != start) {
-        myFace* new_face = new myFace();
-
-        // Create new half-edges for the triangle
+    // Keep triangulating until the remaining face has only 3 vertices
+    while (current->next->next->next != current) {
+        // Diagonal and twin halfedges
         myHalfedge* he1 = new myHalfedge();
         myHalfedge* he2 = new myHalfedge();
-        myHalfedge* he3 = new myHalfedge();
 
-        // Set the sources of the half-edges
-        he1->source = start->source;
-        he2->source = current->source;
-        he3->source = current->next->source;
+        he1->twin = he2;
+        he2->twin = he1;
 
-        // Link the half-edges to form a triangle
-        he1->next = he2; he2->next = he3; he3->next = he1;
-        he1->prev = he3; he2->prev = he1; he3->prev = he2;
+        // Define the direction of each halfedge
+        he1->source = current->next->next->source;
+        he2->source = commonSource;
 
-        // Assign the new face to the half-edges
-        he1->adjacent_face = new_face;
-        he2->adjacent_face = new_face;
-        he3->adjacent_face = new_face;
+        // Create a new face (triangle)
+        myFace* newFace = new myFace();
+        newFace->adjacent_halfedge = he2;
 
-        // Set the adjacent half-edge of the new face
-        new_face->adjacent_halfedge = he1;
+        // Save the next and previous edges for he2 (triangle side)
+        myHalfedge* he2Next = current->next->next;
+        myHalfedge* he2Prev = current->prev;
 
-        // Update the `originof` property for vertices
-        if (!he1->source->originof) he1->source->originof = he1;
+        // Link the new diagonal (he1)
+        he1->next = current;
+        he1->prev = current->next;
+        current->next->next = he1;
+        current->prev = he1;
 
-        // Add the new face and half-edges to the mesh
-        faces.push_back(new_face);
-        halfedges.push_back(he3);
+        // Link the twin halfedge (he2)
+        he2->next = he2Next;
+        he2->prev = he2Prev;
+        he2Next->prev = he2;
+        he2Prev->next = he2;
 
-        // Move to the next edge
-        current = current->next;
+        // Assign the new face to its 3 halfedges
+        myHalfedge* cur = he2;
+        do {
+            cur->adjacent_face = newFace;
+            cur = cur->next;
+        } while (cur != he2);
+
+        // Assign the current face to the diagonal
+        he1->adjacent_face = f;
+
+
+        faces.push_back(newFace);
+        halfedges.push_back(he1);
+        halfedges.push_back(he2);
+
+        // Move on to the remaining polygon
+        current = he2;
     }
 
     return true;
@@ -613,14 +658,7 @@ void myMesh::logMeshStatistics() {
     for (myFace* face : faces) {
         if (!face || !face->adjacent_halfedge) continue;
 
-        // Count the number of vertices in the face
-        int vertexCount = 0;
-        myHalfedge* start = face->adjacent_halfedge;
-        myHalfedge* current = start;
-        do {
-            vertexCount++;
-            current = current->next;
-        } while (current != start);
+        int vertexCount = face->countEdges();
 
         // Classify the face based on the vertex count
         if (vertexCount == 3) {

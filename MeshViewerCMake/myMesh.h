@@ -42,6 +42,7 @@ public:
 	bool triangulateF(myFace *);
 	void simplify();
 	void simplify(myVertex *);
+	void simplifyOLD();
 	void logMeshStatistics();
 
 	void clear();
